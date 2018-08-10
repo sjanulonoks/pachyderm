@@ -59,8 +59,6 @@ const (
 
 	chunksPrefix = "/chunks"
 	lockPrefix   = "/locks"
-
-	maxRetries = 3
 )
 
 var (
@@ -1230,10 +1228,13 @@ func (a *APIServer) worker() {
 				}
 				return fmt.Errorf("error from InspectJob(%v): %+v", jobID, err)
 			}
-			if jobInfo.PipelineVersion != a.pipelineInfo.Version {
-				return fmt.Errorf("job's version (%d) doesn't match pipeline's "+
+			if jobInfo.PipelineVersion < a.pipelineInfo.Version {
+				continue
+			}
+			if jobInfo.PipelineVersion > a.pipelineInfo.Version {
+				return fmt.Errorf("job %s's version (%d) greater than pipeline's "+
 					"version (%d), this should automatically resolve when the worker "+
-					"is updated", jobInfo.PipelineVersion, a.pipelineInfo.Version)
+					"is updated", jobID, jobInfo.PipelineVersion, a.pipelineInfo.Version)
 			}
 
 			// Read the chunks laid out by the master and create the datum factory
@@ -1373,7 +1374,7 @@ func (a *APIServer) processDatums(pachClient *client.APIClient, logger *taggedLo
 
 			env := a.userCodeEnv(jobInfo.Job.ID, data)
 			var dir string
-			var retries int
+			var failures int64
 			if err := backoff.RetryNotify(func() error {
 				if isDone(ctx) {
 					return ctx.Err() // timeout or cancelled job--don't run datum
@@ -1455,8 +1456,8 @@ func (a *APIServer) processDatums(pachClient *client.APIClient, logger *taggedLo
 				if isDone(ctx) {
 					return ctx.Err() // timeout or cancelled job, err out and don't retry
 				}
-				retries++
-				if retries >= maxRetries {
+				failures++
+				if failures >= jobInfo.DatumTries {
 					logger.Logf("failed to process datum with error: %+v", err)
 					if statsTree != nil {
 						object, size, err := pachClient.PutObject(strings.NewReader(err.Error()))
