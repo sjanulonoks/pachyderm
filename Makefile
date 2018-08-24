@@ -80,6 +80,10 @@ install:
 	# GOPATH/bin must be on your PATH to access these binaries:
 	GO15VENDOREXPERIMENT=1 go install -ldflags "$(LD_FLAGS)" ./src/server/cmd/pachctl
 
+install-mac:
+	# Result will be in $GOPATH/bin/darwin_amd64/pachctl
+	GO15VENDOREXPERIMENT=1 GOOS=darwin GOARCH=amd64 go install -ldflags "$(LD_FLAGS)" ./src/server/cmd/pachctl
+
 install-clean:
 	@# Need to blow away pachctl binary if its already there
 	@rm -f $(GOPATH)/bin/pachctl
